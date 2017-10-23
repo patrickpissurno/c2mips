@@ -13,11 +13,12 @@ const INST_PATTERNS = {
 }
 
 
-const code = fs.readFileSync('input.txt').toString().replace(/\r/g, '');
+const code = fs.readFileSync('input.c').toString().replace(/\r/g, '').replace(/(?:^[ \t]+[^\w]*)|(?:^\/\/.*$)|(\n$)/gm, '');
 
 const compiled = compile(code);
 const result = replaceTokens(compiled.env.tokens, compiled.code);
 console.log(result);
+fs.writeFileSync('output.txt', result.replace(/\n/g, '\r\n'));
 
 function compile(code, env){
     if(code.substr(code.length - 1, 1) == ';')
@@ -62,16 +63,15 @@ function compile(code, env){
 
                 let format = getInstFormat('if');
                 let part = format.replace(/\{0\}/g, `{[${env.vars[cond[0]]}]}`).replace(/\{1\}/g, `{[${env.vars[cond[1]]}]}`).replace(/\{2\}/g, i);
-                
-                _elseIndex = inst.lastIndexOf('else');
-                if(_elseIndex == -1)
-                {
-                    console.log(`\nFAILED: The instruction 'if' is missing an 'else'\n'${inst}'`);
-                    process.exit(1);
-                }
 
-                _if = inst.substring(inst.indexOf('{') + 1, _elseIndex - 2).trim();
-                _else = inst.substring(_elseIndex + 6, inst.length - 2).trim();
+                let ifC = getClosing(inst, inst.indexOf('if'));
+                let elseS = inst.indexOf('else', ifC);
+                _if = inst.substring(inst.indexOf('{', inst.indexOf('if')) + 1, ifC - 1);
+
+                if(elseS != -1)
+                    _else = inst.substring(inst.indexOf('{', elseS) + 1, getClosing(inst, elseS) - 1);
+                else
+                    _else = "";
 
                 _if = compile(_if, env);
                 _else = compile(_else, env);
@@ -110,8 +110,6 @@ function replaceTokens(tokens, code){
 }
 
 function getInstArr(code){
-    // console.log("\n" + "\n" + "\n" + code);
-
     const exp = /(((?!;+\n}).{0}|^.{0,3});.*)|((?!}\n*else).{0}|^.{0,4})}(?!\n*})/g;
     split = [];
     
@@ -125,8 +123,6 @@ function getInstArr(code){
     }
     split = split.concat(code.substring(ind, code.length).replace(exp, '\\z\\').split('\\z\\'));
     split = split.filter(x => x.trim().length > 0);
-
-    // console.log(JSON.stringify(split, ' ', 4) + "\n");
     return split;
 }
 
@@ -161,4 +157,35 @@ THEN{2}:
         default:
             return null;
     }
+}
+
+
+
+function getClosing(code, sI){
+    let limit = 2000;
+    let index = sI;
+    let nest = 0;
+    while(index < code.length)
+    {
+        let open = code.indexOf('{', index);
+        let close = code.indexOf('}', index);
+
+        if(close == -1)
+            return index;
+        else if(open == -1)
+            open = close + 1;
+
+        index = open < close ? open : close;
+        nest += open < close ? 1 : -1;
+
+        index ++;
+
+        if(nest <= 0)
+            return index;
+
+        limit -= 1;
+        if(limit < 0)
+            return -9;
+    }
+    return index;
 }
